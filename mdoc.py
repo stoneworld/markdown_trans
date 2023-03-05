@@ -27,8 +27,37 @@ def remove_extra_blank_lines(markdown):
             result.append(lines[i])
     return '\n'.join(result)
 
+def check_need_translation(text):
+    img_regex = r"!\[[^\]]*\]\((.*?)\)"
+    if re.match(img_regex, text):
+        return False
+    pattern = r"^\W+$"
+    if not text.strip() or re.match(pattern, text):
+        return False
+    return True
 
-openai.api_key = "xx"
+def translate_text(text):
+    time.sleep(20)
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {
+                "role": "user",
+                # english prompt here to save tokens
+                "content": f"Please help me to translate,`{text}` to english, please return only translated content not include the origin text unless you can't translate and keep the original markdown format unchanged",
+            }
+        ],
+    )
+    translation = (
+        response["choices"][0]
+            .get("message")
+            .get("content")
+            .encode("utf8")
+            .decode()
+    )
+    return translation
+
+openai.api_key = "xxxx"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -45,39 +74,22 @@ if __name__ == "__main__":
             md = f.read()
 
     md, code_dict = extract_code_blocks(md)
-    print(md)
-    print(code_dict)
 
     paragraphs = md.split("\n\n")
 
     translated_paragraphs = []
     for p in paragraphs:
         pattern = r"\bCODE_BLOCK_\d+\b"
-
         matches = re.findall(pattern, p)
-
-        if len(matches) > 0:
+        if re.match(pattern, p):
             translated_paragraphs.append(code_dict[p.strip()])
-        else:
-            time.sleep(30)
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "user",
-                        # english prompt here to save tokens
-                        "content": f"Please help me to translate,`{p}` to english, please return only translated content not include the origin text unless you can't translate and keep the original markdown format unchanged",
-                    }
-                ],
-            )
-            translation = (
-                response["choices"][0]
-                    .get("message")
-                    .get("content")
-                    .encode("utf8")
-                    .decode()
-            )
-            translated_paragraphs.append(translation)
+            continue
+        if check_need_translation(p) == False:
+            translated_paragraphs.append(p)
+            continue
+
+        translation = translate_text(p)
+        translated_paragraphs.append(translation)
 
     translated_text = "\n\n".join(translated_paragraphs)
 
