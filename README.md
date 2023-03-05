@@ -24,7 +24,7 @@
 
 ## 使用方法
 
-1.使用命令 pip install -r requirements.txt 安装依赖包。
+1. 使用命令 pip install -r requirements.txt 安装依赖包。
 2. 在 mdoc.py 的第 31 行添加 OpenAI API Key。
 3. 运行命令 python mdoc.py -i input.md -o output.md 进行转换。
 
