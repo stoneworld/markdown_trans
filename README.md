@@ -5,7 +5,7 @@
 1. Obtain an OpenAI API key
 2. Ensure Python 3.8+ is installed.
 
-##Usage
+## Usage
 
 1. Install required dependencies by running pip install -r requirements.txt
 2. Add your OpenAI API key on line 31 of mdoc.py
@@ -22,7 +22,7 @@
 1. OpenAI API Token
 2. Python 3.8+
 
-##使用方法
+## 使用方法
 
 1.使用命令 pip install -r requirements.txt 安装依赖包。
 2. 在 mdoc.py 的第 31 行添加 OpenAI API Key。
