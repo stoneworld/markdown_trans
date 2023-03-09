@@ -4,10 +4,9 @@ import openai
 import requests
 import argparse
 import os
-import markdown
 
 NO_LIMIT = False
-API_KEY = "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"
+API_KEY = "****"
 
 
 class ChatGPT:
@@ -32,9 +31,14 @@ class ChatGPT:
                 model="gpt-3.5-turbo",
                 messages=[
                     {
+                        "role": "system",
+                        # english prompt here to save tokens
+                        "content": f"Translate Markdown or YAML to {self.language},If code, only translate comments, please return only translated content not include the origin text unless you can't translate and keep the original markdown or YAML format unchanged",
+                    },
+                    {
                         "role": "user",
                         # english prompt here to save tokens
-                        "content": f"Please help me to translate,`{text}` to `{self.language}`, please return only translated content not include the origin text unless you can't translate and keep the original markdown format unchanged",
+                        "content": f"{text}",
                     }
                 ],
             )
@@ -51,7 +55,7 @@ class ChatGPT:
         except Exception as e:
             # TIME LIMIT for open api please pay
             key_len = self.key.count(",") + 1
-            sleep_time = int(60 / key_len)
+            sleep_time = int(80 / key_len)
             time.sleep(sleep_time)
             print(str(e), "will sleep " + str(sleep_time) + " seconds")
             openai.api_key = self.get_key(self.key)
@@ -59,8 +63,14 @@ class ChatGPT:
                 model="gpt-3.5-turbo",
                 messages=[
                     {
+                        "role": "system",
+                        # english prompt here to save tokens
+                        "content": f"Translate Markdown or YAML to {self.language},If code, only translate comments, please return only translated content not include the origin text unless you can't translate and keep the original markdown or YAML format unchanged",
+                    },
+                    {
                         "role": "user",
-                        "content": f"Please help me to translate,`{text}` to `{self.language}`, please return only translated content not include the origin text unless you can't translate and keep the original markdown format unchanged",
+                        # english prompt here to save tokens
+                        "content": f"{text}",
                     }
                 ],
             )
@@ -74,20 +84,16 @@ class ChatGPT:
         print(t_text)
         return t_text
 
-# 将markdown中的代码块替换为占位符，并将占位符和代码的顺序关系保存到列表中
-def extract_code_blocks(md):
-    # 用于保存占位符和代码块的顺序关系
-    # 匹配markdown代码块
-    code_regex = r"\s*```(?:[\w]+)?\n(?:.*\n)*?.*?```"
-    # 这里可能会超时 待处理
-    code_blocks = re.findall(code_regex, md, re.DOTALL)
 
-    code_dict = {}
-    for i, code_block in enumerate(code_blocks):
-        placeholder = f"CODE_BLOCK_{i}"
-        code_dict[placeholder] = code_block
-        md = md.replace(code_block, "\n\n" +placeholder+"\n\n")
-    return md, code_dict
+def num_tokens_from_messages(messages):
+    """Returns the number of tokens used by a list of messages."""
+    try:
+        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+    except KeyError:
+        encoding = tiktoken.get_encoding("cl100k_base")
+    num_tokens = len(encoding.encode(messages))
+
+    return num_tokens
 
 
 def remove_extra_blank_lines(markdown):
@@ -98,36 +104,43 @@ def remove_extra_blank_lines(markdown):
             result.append(lines[i])
     return '\n'.join(result)
 
-def check_need_translation(text):
-    img_regex = r"!\[[^\]]*\]\((.*?)\)"
-    if re.match(img_regex, text):
-        return False
-    pattern = r"^\W+$"
-    if not text.strip() or re.match(pattern, text):
-        return False
-    return True
+def group_lines(filename, per_split_num):
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+    i = 0
+    code_block_start = 0
+    code_block_end = 0
+    all_blocks = []
+    current_block = []
+    while i < len(lines):
+        if lines[i].strip().startswith('```'):
+            if len(current_block) > 0:
+                all_blocks.append("".join(current_block))
+                current_block = []
+            code_block_start = i
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith('```'):
+                i += 1
+            code_block_end = i
+            current_block = lines[code_block_start:code_block_end+1]
+            all_blocks.append("".join(current_block))
+            current_block = []
+            code_block_end = 0
+            code_block_start = 0
+            i += 1
+        else:
+            if len(current_block) > per_split_num:
+                all_blocks.append("".join(current_block))
+                current_block = []
+            current_block.append(lines[i])
+            i += 1
+    if len(current_block) > 0:
+        all_blocks.append("".join(current_block))
+    return all_blocks
 
-def translate_md(md):
-
-    md, code_dict = extract_code_blocks(md)
-
-    print(code_dict)
-    print(md)
-
-    paragraphs = md.split("\n\n")
-
-    chatgpt_model = ChatGPT(API_KEY, "english")
-
+def translate_md(chatgpt_model, all_blocks):
     translated_paragraphs = []
-    for p in paragraphs:
-        pattern = r"\bCODE_BLOCK_\d+\b"
-        if re.match(pattern, p):
-            translated_paragraphs.append(code_dict[p.strip()])
-            continue
-        if check_need_translation(p) == False:
-            translated_paragraphs.append(p)
-            continue
-
+    for p in all_blocks:
         translation = chatgpt_model.translate(p)
         translated_paragraphs.append(translation)
 
@@ -145,31 +158,24 @@ if __name__ == "__main__":
     parser.add_argument("--no_limit",dest="no_limit",action="store_true",help="If you are a paying customer you can add it")
     args = parser.parse_args()
     NO_LIMIT = args.no_limit
+    chatgpt_model = ChatGPT(API_KEY, "english")
 
     if os.path.isdir(args.input):
         md_files = [f for f in os.listdir(args.input) if f.endswith('.md')]
         for file in md_files:
-            print(file)
-            with open(os.path.join(args.input, file), 'r') as f:
-                md = f.read()
-                translated_md = translate_md(md)
-                new_filename = os.path.splitext(file)[0] + "_en.md"
-                output_path = os.path.join("output", new_filename)  # 设置输出路径
-                with open(output_path, 'w') as f:
-                    f.write(translated_md)
+            file_path = os.path.join(args.input, file)
+            all_blocks = group_lines(file_path, 10)
+            translated_md = translate_md(chatgpt_model, all_blocks)
+            new_filename = os.path.splitext(file)[0] + "_translated.md"
+            output_path = os.path.join("output", new_filename)  # 设置输出路径
+            with open(output_path, 'w') as f:
+                f.write(translated_md)
     else:
-        # Read input file or URL
-        if args.input.startswith("http"):
-            response = requests.get(args.input)
-            md = response.text
-        else:
-            with open(args.input, "r") as f:
-                md = f.read()
-        # Translate content and output
-        translated_md = translate_md(md)
+        file_path = args.input
+        all_blocks = group_lines(file_path, 10)
+        translated_md = translate_md(chatgpt_model, all_blocks)
         if args.output:
-            output_path = os.path.join("output", args.output)  # 设置输出路径
-            with open(output_path, "w") as f:
+            with open(args.output, "w") as f:
                 f.write(translated_md)
         else:
             print(translated_md)
